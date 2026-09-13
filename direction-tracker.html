@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Direction — tracker, path and plan</title>
+<style>
+:root{
+  --page:#F4F6F8; --panel:#FFFFFF; --ink:#101820; --body:#2B3641;
+  --muted:#5C6B7C; --faint:#93A0AD; --rule:#D5DDE5; --soft:#E7ECF1;
+  --navy:#17314F; --t1:#17314F; --t2:#0F766E; --t3:#8A6410; --t4:#7A3B8F;
+  --ok:#146B4A; --warn:#A33A2A;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--page);color:var(--body);
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+ font-size:15px;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:840px;margin:0 auto;padding:0 14px 90px}
+p{margin:0 0 10px}
+a{color:var(--navy)}
+:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+
+header.top{background:var(--navy);color:#fff;padding:16px 0 14px}
+header.top .wrap{padding-bottom:0}
+header.top h1{font-size:18px;margin:0 0 2px;font-weight:700;letter-spacing:-.2px}
+header.top .sub{font-size:12px;color:#9FB3C8;margin:0}
+.statline{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:#9FB3C8}
+.statline b{color:#fff;font-weight:600;font-size:15px;display:block;line-height:1.2}
+
+nav.tabs{display:flex;background:var(--navy);border-top:1px solid #2A4666;overflow-x:auto}
+nav.tabs button{flex:1;min-width:70px;font:inherit;font-size:12.5px;font-weight:500;
+ background:none;border:none;color:#9FB3C8;padding:11px 6px;cursor:pointer;
+ border-bottom:3px solid transparent;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:#fff;font-weight:600;border-bottom-color:#fff;background:#1E3F63}
+
+.panel{background:var(--panel);border:1px solid var(--rule);padding:15px;margin:13px 0}
+.panel h2{font-size:16px;margin:0 0 4px;color:var(--ink);font-weight:600;letter-spacing:-.1px}
+.panel .cap{font-size:12.5px;color:var(--muted);margin:0 0 13px}
+.hide{display:none}
+
+.trk{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--soft)}
+.trk:last-of-type{border-bottom:none}
+.trk .bar{width:4px;align-self:stretch;min-height:34px;flex:none}
+.trk .nm{flex:1;min-width:0}
+.trk .nm b{display:block;font-size:14px;color:var(--ink);font-weight:600}
+.trk .nm span{display:block;font-size:11.5px;color:var(--faint)}
+.step{display:flex;flex:none}
+.step button{font:inherit;width:36px;height:36px;font-size:18px;font-weight:600;
+ background:var(--panel);border:1px solid var(--rule);color:var(--navy);cursor:pointer;line-height:1}
+.step button:active{background:var(--soft)}
+.step .val{width:50px;text-align:center;font-size:14px;font-weight:600;color:var(--ink);
+ border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);height:36px;line-height:34px}
+
+label.fl{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:13px 0 5px}
+textarea,input[type=text]{width:100%;font:inherit;font-size:14px;padding:9px 10px;
+ border:1px solid var(--rule);background:var(--panel);color:var(--ink);border-radius:0;resize:vertical}
+textarea{min-height:58px}
+.btn{font:inherit;font-size:14px;font-weight:600;background:var(--navy);color:#fff;
+ border:none;padding:12px 18px;cursor:pointer;width:100%;margin-top:12px}
+.btn:active{background:#0F2439}
+.btn.sec{background:var(--panel);color:var(--navy);border:1.5px solid var(--navy)}
+.saved{font-size:12.5px;color:var(--ok);font-weight:600;margin-top:8px;text-align:center}
+
+.tot{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+.tot .big{font-size:26px;font-weight:700;color:var(--ink);letter-spacing:-.5px}
+.tot .lab{font-size:12.5px;color:var(--muted)}
+.track{height:22px;background:var(--soft);overflow:hidden}
+.seg{height:100%;float:left}
+.marks{position:relative;height:15px;margin-top:3px;font-size:10.5px;color:var(--faint)}
+.marks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.verdict{font-size:13px;font-weight:600;margin-top:10px;padding:9px 11px;border-left:3px solid}
+.v-under{background:#FDF3F1;border-color:var(--warn);color:#7A2A1E}
+.v-ok{background:#F0F7F3;border-color:var(--ok);color:#0E4E36}
+.v-over{background:#FDF8EF;border-color:var(--t3);color:#6B4E0C}
+
+pre.out{background:#0F1A24;color:#CFE0EE;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+ font-size:12px;line-height:1.5;padding:12px;overflow-x:auto;white-space:pre-wrap;
+ word-break:break-word;margin:11px 0 0}
+
+/* PATH */
+.stage{margin-bottom:16px}
+.stage > .sh{padding:10px 13px;color:#fff;background:var(--navy)}
+.stage > .sh b{display:block;font-size:14.5px;font-weight:600}
+.stage > .sh span{display:block;font-size:11.5px;color:#9FB3C8;margin-top:1px}
+.stage.locked > .sh{background:#7A8896}
+.stp{background:var(--panel);border:1px solid var(--rule);border-top:none;padding:12px 13px;display:flex;gap:11px}
+.stp.done{background:#F6FBF8}
+.chk{flex:none;width:24px;height:24px;border:1.5px solid var(--rule);background:var(--panel);
+ cursor:pointer;font-size:14px;line-height:1;color:var(--ok);font-weight:700;padding:0}
+.stp.done .chk{border-color:var(--ok);background:#E8F3EE}
+.stp .bd{flex:1;min-width:0}
+.stp .n{font-size:10.5px;font-weight:700;color:var(--navy);letter-spacing:.4px;margin-bottom:2px}
+.stp .t{font-size:14.5px;font-weight:600;color:var(--ink);margin-bottom:3px;line-height:1.3}
+.stp .src{font-size:12.5px;color:var(--muted);margin-bottom:5px;word-break:break-word}
+.stp .src a{font-weight:500}
+.stp .do{font-size:13px;line-height:1.5;margin-bottom:5px}
+.stp .dw{font-size:12.5px;color:var(--ok);font-weight:600;line-height:1.45}
+.stp .dw::before{content:"Done when: ";color:var(--faint);font-weight:600}
+.tag{display:inline-block;font-size:9.5px;font-weight:700;padding:2px 5px;margin-left:5px;vertical-align:2px;letter-spacing:.3px}
+.tag.free{background:#E8F3EE;color:var(--ok)}
+.tag.paid{background:#FBF0EE;color:var(--warn)}
+.tag.adm{background:#EEF1F5;color:var(--navy)}
+
+.nowbox{background:#0F2439;color:#fff;padding:14px 15px;margin:13px 0}
+.nowbox .l{font-size:10.5px;letter-spacing:.6px;color:#7FA0BF;font-weight:700;margin-bottom:4px}
+.nowbox .t{font-size:16px;font-weight:600;margin-bottom:6px}
+.nowbox .d{font-size:13px;color:#C3D4E3;line-height:1.5}
+
+table.sch{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel)}
+table.sch th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);padding:8px 9px;
+ background:#F6F8FA;border-bottom:1px solid var(--rule)}
+table.sch td{padding:9px;border-bottom:1px solid var(--soft);vertical-align:top}
+table.sch tr:last-child td{border-bottom:none}
+table.sch td:first-child{font-weight:600;color:var(--ink);white-space:nowrap}
+
+.ph{border:1px solid var(--rule);border-left:3px solid var(--navy);padding:11px 13px;margin-bottom:9px;background:var(--panel)}
+.ph.live{border-left-color:var(--ok);background:#F6FBF8}
+.ph .w{font-size:10.5px;font-weight:700;color:var(--navy);letter-spacing:.5px;margin-bottom:2px}
+.ph.live .w{color:var(--ok)}
+.ph .t{font-size:14.5px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.ph ul{margin:0;padding-left:16px}
+.ph li{font-size:13px;margin-bottom:5px;line-height:1.5}
+
+.rules{background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--warn);padding:12px 14px}
+.rules ol{margin:0;padding-left:17px}
+.rules li{font-size:13.5px;margin-bottom:7px;line-height:1.5}
+.note-sm{font-size:12px;color:var(--faint);margin-top:9px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <h1>Direction</h1>
+    <p class="sub">Start Monday 14 September 2026 · first check-in Sunday 20 September</p>
+    <div class="statline">
+      <div><b id="sDay">Day 1</b>since start</div>
+      <div><b id="sWeek">Week 1</b>of 130</div>
+      <div><b id="sStreak">0</b>day streak</div>
+      <div><b id="sTotal">0h</b>total</div>
+      <div><b id="sSteps">0/41</b>steps</div>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="today">Today</button>
+  <button role="tab" aria-selected="false" data-tab="path">Path</button>
+  <button role="tab" aria-selected="false" data-tab="week">Week</button>
+  <button role="tab" aria-selected="false" data-tab="plan">Plan</button>
+  <button role="tab" aria-selected="false" data-tab="data">Data</button>
+</nav>
+
+<div class="wrap">
+
+<!-- TODAY -->
+<div id="tab-today">
+  <div class="nowbox">
+    <div class="l">RIGHT NOW — STEP 2</div>
+    <div class="t">Lecture 1: building micrograd</div>
+    <div class="d">Open Colab. Open the video. 90 minutes. Watch a few minutes, pause, type the code yourself — never copy-paste. Phone in another room.</div>
+  </div>
+
+  <div class="panel">
+    <h2 id="todayTitle">Today</h2>
+    <p class="cap">Log in 15-minute steps. Only what actually happened.</p>
+    <div id="trackRows"></div>
+    <label class="fl" for="shipped">Shipped — what exists now that didn't this morning</label>
+    <textarea id="shipped" placeholder="Not 'watched video 1'. Something like: 'Value class with add, mul, backward — gradients match torch on a 3-input expression'."></textarea>
+    <label class="fl" for="stuck">Stuck on</label>
+    <textarea id="stuck" placeholder="The specific thing you couldn't get past."></textarea>
+    <label class="fl" for="tomorrow">Tomorrow's exact starting point</label>
+    <input type="text" id="tomorrow" placeholder="e.g. 'lecture 1 from 41:20, topological sort'">
+    <button class="btn" id="saveDay">Save today</button>
+    <div class="saved hide" id="savedMsg">Saved</div>
+  </div>
+
+  <div class="panel">
+    <h2>This week</h2>
+    <p class="cap">Floor 12h · Target 16h · Ceiling 20h</p>
+    <div class="tot"><span class="big" id="wkTotal">0.0h</span><span class="lab">of 16h target</span></div>
+    <div class="track" id="wkBar"></div>
+    <div class="marks"><span style="left:60%">12 floor</span><span style="left:80%">16 target</span><span style="left:100%">20</span></div>
+    <div class="verdict v-under" id="wkVerdict">No hours logged yet this week.</div>
+  </div>
+</div>
+
+<!-- PATH -->
+<div id="tab-path" class="hide">
+  <div class="panel">
+    <h2>The path</h2>
+    <p class="cap">41 steps, in order. Do not skip ahead — later stages assume earlier ones. Tick a step only when its "done when" is actually true.</p>
+  </div>
+  <div id="pathOut"></div>
+</div>
+
+<!-- WEEK -->
+<div id="tab-week" class="hide">
+  <div class="panel">
+    <h2>Sunday check-in</h2>
+    <p class="cap">Generated from what you logged. Copy and paste into the chat every Sunday evening.</p>
+    <label class="fl" for="commitment">Next week's one commitment</label>
+    <input type="text" id="commitment" placeholder="One thing, specific enough that Sunday-you can't argue about it.">
+    <label class="fl" for="skipped">Skipped this week, and why — honestly</label>
+    <textarea id="skipped" placeholder="Inflated hours only fool you. Nobody can check them."></textarea>
+    <button class="btn" id="genBtn">Generate check-in</button>
+    <button class="btn sec" id="copyBtn">Copy to clipboard</button>
+    <pre class="out" id="checkinOut">Press generate.</pre>
+  </div>
+  <div class="panel">
+    <h2>Last 8 weeks</h2>
+    <p class="cap">Against the 12-hour floor.</p>
+    <div id="history"></div>
+  </div>
+</div>
+
+<!-- PLAN -->
+<div id="tab-plan" class="hide">
+  <div class="panel">
+    <h2>Four tracks</h2>
+    <p class="cap">Weights apply from month 4. Until then everything is Track 1.</p>
+    <table class="sch">
+      <thead><tr><th>Track</th><th>Share</th><th>Starts</th></tr></thead>
+      <tbody>
+        <tr><td>1 · Maths &amp; implementation</td><td>50%</td><td>Now</td></tr>
+        <tr><td>2 · AI security &amp; evals</td><td>25%</td><td>Month 4</td></tr>
+        <tr><td>3 · Recall conversion</td><td>15%</td><td>Month 4</td></tr>
+        <tr><td>4 · DSA (exam-scoped)</td><td>10% capped</td><td>Month 4</td></tr>
+      </tbody>
+    </table>
+    <p class="note-sm">Track 3 is conversion, not learning from scratch. You can do this work with docs open; the gap is explaining it cold. Weeks per topic, not years. Interview prep is a phase at month 18, not a track.</p>
+  </div>
+  <div class="panel">
+    <h2>Weekly schedule</h2>
+    <p class="cap">16 hours. Morning is primary — it competes with sleep, not with fatigue.</p>
+    <table class="sch">
+      <thead><tr><th>When</th><th>Length</th><th>What</th></tr></thead>
+      <tbody>
+        <tr><td>Mon–Fri AM</td><td>90 min</td><td>Primary block. Phone in another room. Last 5 min: write tomorrow's exact starting point.</td></tr>
+        <tr><td>Mon–Fri PM</td><td>30 min</td><td>Light only. Review morning notes, re-derive one thing from memory. No new hard material.</td></tr>
+        <tr><td>Saturday</td><td>2 × 2h</td><td>Two blocks, real break between. Rebuild-from-blank day.</td></tr>
+        <tr><td>Sunday</td><td>90 min</td><td>Finish what Saturday opened. Never start something new.</td></tr>
+        <tr><td>Sunday</td><td>30 min</td><td>Review and check-in.</td></tr>
+      </tbody>
+    </table>
+    <p class="note-sm">From month 4: Mon/Tue/Wed/Fri = Track 1. Thu AM = Track 3. Thu PM = Track 4.</p>
+  </div>
+  <div class="panel"><h2>Thirty months</h2><div id="phases"></div></div>
+  <div class="panel">
+    <h2>Rules</h2>
+    <div class="rules"><ol>
+      <li><b>A 12-hour week is a successful week.</b> Not a shortfall.</li>
+      <li><b>Above 20 hours, stop.</b> A burned week costs you the next one.</li>
+      <li><b>No new domains.</b> The plan is finished. Nothing left to design.</li>
+      <li><b>"Shipped" means it exists</b> and someone could look at it.</li>
+      <li><b>Hours are honest or this is worthless.</b> Nobody can check them but you.</li>
+      <li><b>Missed weeks get logged, not erased.</b> No catching up, no restarting.</li>
+      <li><b>Three consecutive missed weeks</b> → stop and diagnose, don't continue.</li>
+      <li><b>OMSCS application in by month 4.</b> It's the structure everything leans on.</li>
+      <li><b>One human contact point by month 3.</b></li>
+      <li><b>Never copy-paste code from a video.</b> Type it. The typing is the learning.</li>
+    </ol></div>
+  </div>
+  <div class="panel">
+    <h2>What not to use</h2>
+    <div class="rules"><ol>
+      <li><b>Any agentic AI content from 2023–24.</b> Predates MCP and context engineering entirely.</li>
+      <li><b>Udemy and DataCamp AI bundles.</b> Breadth without depth.</li>
+      <li><b>Kaggle as a career strategy.</b> Correlates weakly with all of this.</li>
+      <li><b>Roadmaps listing thirty tools.</b> Written for search traffic.</li>
+      <li><b>Fine-tuning tutorials before Stage B is done.</b> You can't diagnose results you don't understand.</li>
+      <li><b>Studying maths before starting the videos.</b> Learn each piece when the code needs it.</li>
+    </ol></div>
+  </div>
+</div>
+
+<!-- DATA -->
+<div id="tab-data" class="hide">
+  <div class="panel">
+    <h2>Export</h2>
+    <p class="cap">Full log as text. Paste into the chat for a review with real numbers.</p>
+    <button class="btn" id="expBtn">Generate export</button>
+    <button class="btn sec" id="copyExpBtn">Copy to clipboard</button>
+    <pre class="out" id="expOut">Press generate.</pre>
+  </div>
+  <div class="panel">
+    <h2>Backup and restore</h2>
+    <p class="cap">Paste a previous backup to restore. Overwrites everything stored.</p>
+    <textarea id="impBox" placeholder="Paste backup JSON here"></textarea>
+    <button class="btn sec" id="impBtn">Restore</button>
+    <div class="saved hide" id="impMsg">Restored</div>
+    <p class="note-sm" id="storeState">Checking storage…</p>
+  </div>
+</div>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var TRACKS=[
+ {id:"t1",name:"Maths & implementation",sub:"Track 1 · the core",color:"#17314F"},
+ {id:"t2",name:"AI security & evals",sub:"Track 2 · from month 4",color:"#0F766E"},
+ {id:"t3",name:"Recall conversion",sub:"Track 3 · from month 4",color:"#8A6410"},
+ {id:"t4",name:"DSA (exam-scoped)",sub:"Track 4 · capped",color:"#7A3B8F"}
+];
+
+function L(u,t){return '<a href="'+u+'" target="_blank" rel="noopener">'+(t||u.replace(/^https?:\/\//,""))+'</a>';}
+
+var PATH=[
+{s:"STAGE A · WEEKS 1–2 · THE TEST",sub:"Only output: did any of it absorb you. Not whether it was easy.",locked:false,steps:[
+ {id:"a1",t:"Set up Google Colab",tag:"free",src:L("https://colab.research.google.com"),
+  do:"Free, browser-based, Python and PyTorch pre-installed, works on your phone. Zero setup friction, which matters at 6am. Local install later, once the habit holds.",
+  dw:"A notebook runs <code>import torch</code> without error."},
+ {id:"a2",t:"Lecture 1 — building micrograd",tag:"free",src:L("https://karpathy.ai/zero-to-hero.html","karpathy.ai/zero-to-hero.html")+" · code: "+L("https://github.com/karpathy/nn-zero-to-hero","github.com/karpathy/nn-zero-to-hero"),
+  do:"Days 1–5, 90 min each. Watch a few minutes, pause, type the code yourself. Roughly 30 min of video per session — the typing is what takes the time and is the part that works. Karpathy's own prerequisite is basic Python and vague high-school calculus. You have more than that.",
+  dw:"Your Value class does add, mul, tanh and backward, and gradients match torch.autograd."},
+ {id:"a3",t:"Rebuild micrograd from a blank file",tag:"free",src:"No video, no notes, no reference.",
+  do:"Saturday, two 2-hour blocks. You will get stuck. Note exactly where — that is the single most valuable output of the fortnight, and it's what we discuss at check-in.",
+  dw:"It runs, or you have a written list of precisely where you stalled."},
+ {id:"a4",t:"Lecture 2 — makemore, the bigram model",tag:"free",src:L("https://karpathy.ai/zero-to-hero.html","karpathy.ai/zero-to-hero.html"),
+  do:"Week 2. Introduces torch.Tensor properly plus the language-modelling loop: training, sampling, negative log-likelihood loss. Same method — watch, pause, type. Rebuild from blank on Saturday.",
+  dw:"A bigram model that generates plausible names, and you can explain what the loss number means."},
+ {id:"a5",t:"Maths support — only when blocked",tag:"free",src:L("https://www.3blue1brown.com/topics/calculus","3blue1brown.com/topics/calculus")+" · "+L("https://www.3blue1brown.com/topics/linear-algebra","/linear-algebra"),
+  do:"Do NOT study maths first. When the video blocks you: derivatives and chain rule → Essence of Calculus ch 1–4. Matrices and vectors → Essence of Linear Algebra ch 1–4. Cap at 20 minutes, then go back to the code.",
+  dw:"Ongoing. Never a reason to stop the lectures."}
+]},
+{s:"STAGE B · MONTHS 1–3 · TRACK 1 ONLY",sub:"Finish the series. Single track, no splitting attention.",locked:true,steps:[
+ {id:"b1",t:"Lecture 3 — makemore: MLP",tag:"free",src:L("https://karpathy.ai/zero-to-hero.html","karpathy.ai/zero-to-hero.html"),
+  do:"Multilayer perceptron character model. Introduces train/dev/test splits, learning-rate tuning, over- and underfitting — the ML vocabulary you'll use forever.",
+  dw:"You can tune a learning rate deliberately rather than by guessing."},
+ {id:"b2",t:"Lecture 4 — activations, gradients, batchnorm",tag:"free",src:L("https://karpathy.ai/zero-to-hero.html","karpathy.ai/zero-to-hero.html"),
+  do:"Diagnostics: why networks fail to train, dead neurons, initialisation, batch normalisation. This is the lecture that makes you able to debug rather than guess.",
+  dw:"You can read an activation histogram and say what's wrong."},
+ {id:"b3",t:"Lecture 5 — becoming a backprop ninja",tag:"free",src:L("https://karpathy.ai/zero-to-hero.html","karpathy.ai/zero-to-hero.html"),
+  do:"Backpropagate through a whole MLP by hand at tensor level, no autograd. The hardest lecture and the highest-value one. This is the exit gate from the plan — do it slowly.",
+  dw:"Manual gradients match autograd for every layer, including cross-entropy and batchnorm."},
+ {id:"b4",t:"Lecture 6 — WaveNet",tag:"free",src:L("https://karpathy.ai/zero-to-hero.html","karpathy.ai/zero-to-hero.html"),
+  do:"Deepen the MLP into a hierarchical architecture. Shorter lecture. Teaches how architecture choices follow from the shape of the data.",
+  dw:"The model trains and you can explain why the hierarchy helps."},
+ {id:"b5",t:"Lecture 7 — build GPT from scratch",tag:"free",src:L("https://karpathy.ai/zero-to-hero.html","karpathy.ai/zero-to-hero.html"),
+  do:"Self-attention, multi-head attention, the full transformer block, following <i>Attention Is All You Need</i>. The centrepiece of the whole series.",
+  dw:"You implement scaled dot-product attention from a blank file and explain why it's divided by √d."},
+ {id:"b6",t:"Lecture 8 — the GPT tokenizer (minBPE)",tag:"free",src:L("https://karpathy.ai/zero-to-hero.html","karpathy.ai/zero-to-hero.html"),
+  do:"Byte-pair encoding from scratch. Tokenisation causes a surprising share of real LLM bugs, and almost nobody understands it.",
+  dw:"Your tokenizer round-trips text through encode and decode without loss."},
+ {id:"b7",t:"Read Attention Is All You Need, in full",tag:"free",src:L("https://arxiv.org/abs/1706.03762","arxiv.org/abs/1706.03762"),
+  do:"After lecture 7, not before. Read it with your own implementation open beside it. Map every equation to a line of your code.",
+  dw:"You can point at any equation in the paper and find it in your code."},
+ {id:"b8",t:"Maths reference — Mathematics for Machine Learning",tag:"free",src:L("https://mml-book.github.io","mml-book.github.io"),
+  do:"Free PDF from the authors. Reference, not a read-through. Chapters 2–3 linear algebra and geometry, 5 vector calculus, 6 probability, 7 optimisation. Look things up as the lectures raise them.",
+  dw:"Ongoing reference for the whole 30 months."},
+ {id:"b9",t:"ADMIN — apply to OMSCS",tag:"adm",src:L("https://omscs.gatech.edu","omscs.gatech.edu"),
+  do:"About $7,000 total, roughly 74% acceptance, part-time, top-ten CS brand, no GRE, no hard GPA cutoff. This is the external structure the whole plan leans on. Deadline slips are the main risk.",
+  dw:"Application submitted."},
+ {id:"b10",t:"ADMIN — degree recognition and GPA evaluation",tag:"adm",src:"UAE Ministry of Education Certificate of Recognition · "+L("https://www.wes.org","wes.org"),
+  do:"Both are slow and both are needed. You also do not currently know your converted GPA — linear conversion gives about 2.44, percentage-based mapping can give around 3.0. That difference matters.",
+  dw:"You hold an official equivalency document and a number."},
+ {id:"b11",t:"ADMIN — academic referee",tag:"adm",src:"A former course instructor or research advisor.",
+  do:"MAAI requires one academic referee and six years have passed. This is the item most likely to quietly kill an application in February. Start the conversation now.",
+  dw:"One person has agreed."},
+ {id:"b12",t:"ADMIN — one human contact point",tag:"adm",src:"OMSCS Slack and subreddit, or a local study group.",
+  do:"Text-based, asynchronous, no small talk — built for how you operate. Isolation is why previous attempts died quietly with nobody watching.",
+  dw:"One person knows what you're working on."}
+]},
+{s:"STAGE C · MONTHS 4–9 · FOUR TRACKS LIVE",sub:"Weights 50 / 25 / 15 / 10. First real portfolio piece.",locked:true,steps:[
+ {id:"c1",t:"Reproduce GPT-2 124M — build-nanogpt",tag:"free",src:L("https://github.com/karpathy/build-nanogpt","github.com/karpathy/build-nanogpt")+" · "+L("https://github.com/karpathy/nanoGPT","nanoGPT"),
+  do:"Track 1. Your first real training run. Rented GPU is fine and expected. Mixed precision, gradient accumulation, learning-rate schedules, and profiling why it's slow.",
+  dw:"A trained model plus a write-up of what the bottleneck was."},
+ {id:"c2",t:"Dive into Deep Learning — selected chapters",tag:"free",src:L("https://d2l.ai","d2l.ai"),
+  do:"Track 1 reference. Optimisation, computational performance, attention mechanisms. Runnable code throughout. Use when Karpathy moves faster than you do.",
+  dw:"Reference. No completion target."},
+ {id:"c3",t:"OWASP Top 10 for LLM Applications",tag:"free",src:L("https://genai.owasp.org","genai.owasp.org"),
+  do:"Track 2 starts here. The shared vocabulary of this entire field. Interviewers expect fluency and your test suite maps to it directly.",
+  dw:"You can name all ten and give a concrete example of each."},
+ {id:"c4",t:"Hugging Face LLM Course and Agents Course",tag:"free",src:L("https://huggingface.co/learn","huggingface.co/learn"),
+  do:"Track 2. Hands-on and actually current, which most agent material is not. Do the agents course after the LLM course.",
+  dw:"Both certificates, and a working agent you wrote."},
+ {id:"c5",t:"Anthropic Academy — agents, tools, MCP",tag:"free",src:"Search \"Anthropic Academy\". MCP spec: "+L("https://modelcontextprotocol.io","modelcontextprotocol.io"),
+  do:"Track 2. Learn MCP at specification level, not tutorial level. It's the integration standard and it's in job descriptions now.",
+  dw:"You've written an MCP server from the spec."},
+ {id:"c6",t:"PROJECT — eval harness with a calibrated judge",tag:"free",src:"Your own repo. Reference: "+L("https://docs.ragas.io","docs.ragas.io"),
+  do:"Track 2, and the single most valuable thing you will build this year. Hand-built dataset, LLM-as-judge validated against your own human labels with the agreement figure reported, regression suite in CI. Eval literacy is the strongest signal that someone has shipped real LLM systems.",
+  dw:"You introduce a deliberate quality regression and the suite catches it before you do."},
+ {id:"c7",t:"PortSwigger — LLM attack labs",tag:"free",src:L("https://portswigger.net/web-security/llm-attacks","portswigger.net/web-security/llm-attacks"),
+  do:"Track 2. Interactive labs on prompt injection and insecure output handling. Rare in being hands-on rather than descriptive.",
+  dw:"All labs solved."},
+ {id:"c8",t:"Designing Data-Intensive Applications — ch 7 and 9 first",tag:"paid",src:"Martin Kleppmann, O'Reilly.",
+  do:"Track 3 starts here. Transactions and consistency are exactly the topics you'd currently fail on recall. Read those two chapters before anything else in the book.",
+  dw:"You can explain isolation levels cold, with no reference."},
+ {id:"c9",t:"PostgreSQL docs — concurrency control",tag:"free",src:L("https://www.postgresql.org/docs/current/mvcc.html","postgresql.org/docs/current/mvcc.html"),
+  do:"Track 3. Read the MVCC chapter properly, once. Most engineers with six years' experience never have. Pair with "+L("https://use-the-index-luke.com","use-the-index-luke.com")+" for indexing.",
+  dw:"You can explain MVCC and why SELECT FOR UPDATE exists."},
+ {id:"c10",t:"Anki — spaced retrieval",tag:"free",src:L("https://apps.ankiweb.net","apps.ankiweb.net"),
+  do:"Track 3's actual mechanism. Write cards from what you failed to explain, never from what you read. Ten minutes in the evening block.",
+  dw:"Daily habit, reviews cleared."},
+ {id:"c11",t:"NeetCode 150 — patterns, not volume",tag:"free",src:L("https://neetcode.io","neetcode.io"),
+  do:"Track 4, hard-capped at 10% of hours. Scope: arrays and hashing, two pointers, stack, binary search, trees, graphs, basic DP, recursion, OOP. That is the MAAI exam syllabus. It does not expand.",
+  dw:"Comfortable with each pattern. Not a target count of problems."}
+]},
+{s:"STAGE D · MONTHS 10–18 · DEPTH",sub:"Where the portfolio becomes a credential.",locked:true,steps:[
+ {id:"d1",t:"MITRE ATLAS",tag:"free",src:L("https://atlas.mitre.org","atlas.mitre.org"),
+  do:"The ATT&CK equivalent for AI systems, with case studies of real attacks on deployed ML. Track 2 depth.",
+  dw:"You can map an attack you've built to ATLAS techniques."},
+ {id:"d2",t:"NIST AI Risk Management Framework + GenAI Profile",tag:"free",src:L("https://www.nist.gov/itl/ai-risk-management-framework","nist.gov/itl/ai-risk-management-framework"),
+  do:"Dry, and the thing that makes you legible to banks and government buyers. This is the governance vocabulary of the business in Stage F.",
+  dw:"You can structure a risk assessment using it."},
+ {id:"d3",t:"AI Engineering — Chip Huyen",tag:"paid",src:"O'Reilly, 2025.",
+  do:"The best single book on building and evaluating production AI systems. The evaluation chapters are the reason to buy it.",
+  dw:"Read, with notes in Anki."},
+ {id:"d4",t:"PROJECT — three paper reproductions",tag:"free",src:L("https://paperswithcode.com","paperswithcode.com")+" · "+L("https://arxiv.org/list/cs.LG/recent","arxiv cs.LG"),
+  do:"Small scale is fine. The deliverable is the divergence analysis — where your numbers differ from the paper and your hypothesis for why. That demonstrates research judgement; matching numbers only demonstrates diligence.",
+  dw:"Three public repos, each with a written divergence analysis."},
+ {id:"d5",t:"PROJECT — adversarial test suite",tag:"free",src:"Your own repo, mapped to OWASP LLM Top 10 and ATLAS.",
+  do:"Scoped tool permissions, human approval checkpoint, full tracing, cost accounting per run, injection attempts as test cases. This is the differentiating portfolio piece.",
+  dw:"Public, documented, and someone else can run it."},
+ {id:"d6",t:"One public write-up a month",tag:"free",src:"Your blog, then syndicate.",
+  do:"A reproduction, a failure analysis, a benchmark critique. Not vanity — this is the pipeline. Your first client or job lead almost certainly comes from someone who read one of these.",
+  dw:"Twelve posts."},
+ {id:"d7",t:"OPTIONAL — MAAI application and entrance exam",tag:"adm",src:L("https://mbzuai.ac.ae/study/master-in-applied-ai/","mbzuai.ac.ae/study/master-in-applied-ai"),
+  do:"AED 170,000, no scholarship, part-time, Abu Dhabi. No published GPA floor — the entrance exam determines eligibility, and that exam is Track 1 plus Track 4. Priority deadline late February.",
+  dw:"Decision made either way, not left open."}
+]},
+{s:"STAGE E · MONTHS 18–24 · CONVERSION",sub:"Where Track 3 pays off.",locked:true,steps:[
+ {id:"e1",t:"The System Design Primer",tag:"free",src:L("https://github.com/donnemartin/system-design-primer","github.com/donnemartin/system-design-primer"),
+  do:"Use as a checklist of what to convert, not as study material. You've built most of this; the gap is articulating it.",
+  dw:"You can whiteboard any item on the list."},
+ {id:"e2",t:"Distributed training",tag:"free",src:L("https://docs.pytorch.org/docs/stable/fsdp.html","PyTorch FSDP docs")+" · "+L("https://www.deepspeed.ai","deepspeed.ai"),
+  do:"Data parallel, then FSDP, then tensor and pipeline parallelism. Understand the communication pattern each implies — that is what you'll be debugging.",
+  dw:"A multi-GPU run and a written account of the bottleneck you fixed."},
+ {id:"e3",t:"Implement-from-paper drills",tag:"free",src:"Recent arXiv papers, timed.",
+  do:"The research engineer bar: read a paper, working implementation within days. Practise under time pressure.",
+  dw:"Three papers implemented in under two weeks each."},
+ {id:"e4",t:"ML system design interview prep",tag:"free",src:"Your own portfolio as the case material.",
+  do:"Not a track — a phase. Now it's real, because you're a candidate. Rehearse explaining your own projects in five minutes.",
+  dw:"You can present each portfolio piece without notes."}
+]},
+{s:"STAGE F · MONTHS 24–30 · CONVERT",sub:"Roles first. Business only after.",locked:true,steps:[
+ {id:"f1",t:"Apply — Abu Dhabi AI market",tag:"adm",src:"G42, Presight, Inception, Core42, Hub71 companies.",
+  do:"Realistic band AED 450,000–600,000+, tax-free, with a 25–40% premium for GenAI and LLM depth. Do not relocate — you're already in the highest net-pay market for this work.",
+  dw:"Offer accepted."},
+ {id:"f2",t:"Only then — AI assurance, services first",tag:"adm",src:"See the PDF, sections 4 and 5.",
+  do:"Independent evaluation and model governance for regulated GCC organisations. Services before product. Year one no business at all; year two one engagement; year three the repeated part becomes tooling. Read your employment contract and see a UAE lawyer before the first invoice.",
+  dw:"Not before month 24. Nothing to do until then."}
+]}
+];
+
+var PHASES=[
+ {w:"WEEKS 1–2",live:true,t:"The test",li:["Lectures 1 and 2, typed not copied.","Rebuild each from a blank file on Saturday.","Roughly 16 hours a week. Cost: zero.","Only output: did any of it absorb you."]},
+ {w:"MONTHS 1–3",t:"Track 1 only",li:["Finish Zero to Hero, lectures 3 to 8.","Attention implemented from a blank file.","OMSCS application, degree recognition, WES, academic referee.","One human contact point."]},
+ {w:"MONTHS 4–9",t:"All four tracks",li:["50 / 25 / 15 / 10.","GPT-2 reproduction.","First eval harness with a calibrated judge.","Track 3 conversion begins."]},
+ {w:"MONTHS 10–18",t:"Depth",li:["Three paper reproductions with divergence analysis.","Adversarial test suite mapped to OWASP and ATLAS.","One public write-up a month.","MAAI decision made either way."]},
+ {w:"MONTHS 18–24",t:"Interview conversion",li:["ML system design, implement-from-paper under time pressure, distributed debugging."]},
+ {w:"MONTHS 24–30",t:"Applications",li:["Abu Dhabi market. AED 450,000–600,000+, tax-free.","Business only after a role, and only as services."]}
+];
+
+/* ---------- storage ---------- */
+var KEY="direction:v2";
+var DB={start:"2026-09-14",logs:{},steps:{},commit:"",skipped:""};
+var hasStore=false;
+function todayISO(d){d=d||new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function parseISO(s){var p=s.split("-");return new Date(+p[0],+p[1]-1,+p[2]);}
+function addDays(d,n){var x=new Date(d);x.setDate(x.getDate()+n);return x;}
+function mondayOf(d){var x=new Date(d);var g=(x.getDay()+6)%7;return addDays(x,-g);}
+
+async function load(){
+  try{ var r=await window.storage.get(KEY); hasStore=true;
+       if(r&&r.value) DB=Object.assign(DB,JSON.parse(r.value));
+  }catch(e){ try{ await window.storage.set(KEY,JSON.stringify(DB)); hasStore=true; }catch(e2){ hasStore=false; } }
+  if(!DB.steps) DB.steps={};
+  document.getElementById("storeState").textContent = hasStore
+   ? "Storage active — saved automatically between sessions. Still take a backup monthly."
+   : "Storage unavailable in this view. Nothing persists — export before closing, restore next time.";
+  render(); renderPath();
+}
+async function save(){ try{ await window.storage.set(KEY,JSON.stringify(DB)); }catch(e){} }
+
+var cur=todayISO();
+function blankDay(){return {t1:0,t2:0,t3:0,t4:0,shipped:"",stuck:"",tomorrow:""};}
+function getDay(k){return DB.logs[k]||blankDay();}
+function dayTotal(d){return (d.t1||0)+(d.t2||0)+(d.t3||0)+(d.t4||0);}
+function weekDays(ref){var m=mondayOf(parseISO(ref)),o=[];for(var i=0;i<7;i++)o.push(todayISO(addDays(m,i)));return o;}
+function weekTotal(ref){return weekDays(ref).reduce(function(s,k){return s+dayTotal(getDay(k));},0);}
+function allSteps(){var n=0;PATH.forEach(function(g){n+=g.steps.length;});return n;}
+
+function render(){
+  var d=getDay(cur), rows=document.getElementById("trackRows"); rows.innerHTML="";
+  TRACKS.forEach(function(t){
+    var div=document.createElement("div"); div.className="trk";
+    div.innerHTML='<div class="bar" style="background:'+t.color+'"></div>'+
+      '<div class="nm"><b>'+t.name+'</b><span>'+t.sub+'</span></div>'+
+      '<div class="step"><button data-a="-" data-t="'+t.id+'" aria-label="less">&minus;</button>'+
+      '<div class="val" id="v-'+t.id+'">'+(d[t.id]||0).toFixed(2).replace(/\.00$/,"")+'</div>'+
+      '<button data-a="+" data-t="'+t.id+'" aria-label="more">+</button></div>';
+    rows.appendChild(div);
+  });
+  document.getElementById("shipped").value=d.shipped||"";
+  document.getElementById("stuck").value=d.stuck||"";
+  document.getElementById("tomorrow").value=d.tomorrow||"";
+  document.getElementById("todayTitle").textContent=
+    parseISO(cur).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"});
+
+  var dayN=Math.floor((parseISO(todayISO())-parseISO(DB.start))/86400000)+1;
+  document.getElementById("sDay").textContent="Day "+Math.max(1,dayN);
+  document.getElementById("sWeek").textContent="Week "+Math.max(1,Math.ceil(Math.max(1,dayN)/7));
+  var tot=0;Object.keys(DB.logs).forEach(function(k){tot+=dayTotal(DB.logs[k]);});
+  document.getElementById("sTotal").textContent=tot.toFixed(0)+"h";
+  var s=0,p=parseISO(todayISO());
+  while(dayTotal(getDay(todayISO(p)))>0){s++;p=addDays(p,-1);}
+  document.getElementById("sStreak").textContent=s;
+  document.getElementById("sSteps").textContent=Object.keys(DB.steps).filter(function(k){return DB.steps[k];}).length+"/"+allSteps();
+  renderWeek(); renderHistory();
+}
+function renderWeek(){
+  var wt=weekTotal(cur);
+  document.getElementById("wkTotal").textContent=wt.toFixed(1)+"h";
+  var bar=document.getElementById("wkBar"); bar.innerHTML="";
+  TRACKS.forEach(function(t){
+    var h=weekDays(cur).reduce(function(s,k){return s+(getDay(k)[t.id]||0);},0);
+    if(h<=0)return;
+    var g=document.createElement("div"); g.className="seg";
+    g.style.width=Math.min(100,(h/20)*100)+"%"; g.style.background=t.color; bar.appendChild(g);
+  });
+  var v=document.getElementById("wkVerdict");
+  if(wt<=0){v.className="verdict v-under";v.textContent="No hours logged yet this week.";}
+  else if(wt<12){v.className="verdict v-under";v.textContent=(12-wt).toFixed(1)+"h below the floor.";}
+  else if(wt<=20){v.className="verdict v-ok";v.textContent=wt>=16?"Above target. Good week.":"Above the floor. This counts as a successful week.";}
+  else{v.className="verdict v-over";v.textContent="Over the ceiling. Stop — a burned week costs you the next one.";}
+}
+function renderHistory(){
+  var h=document.getElementById("history"); h.innerHTML="";
+  for(var i=7;i>=0;i--){
+    var ref=todayISO(addDays(parseISO(cur),-7*i)), t=weekTotal(ref), m=mondayOf(parseISO(ref));
+    var col=t===0?"#D5DDE5":(t<12?"#A33A2A":"#146B4A");
+    var r=document.createElement("div"); r.className="trk";
+    r.innerHTML='<div class="bar" style="background:'+col+'"></div><div class="nm"><b>w/c '+
+      m.toLocaleDateString(undefined,{day:"numeric",month:"short"})+'</b><span>'+
+      (t===0?"no log":(t<12?"below floor":"floor met"))+'</span></div>'+
+      '<div style="font-weight:600;font-size:15px;color:var(--ink)">'+t.toFixed(1)+'h</div>';
+    h.appendChild(r);
+  }
+}
+function renderPath(){
+  var o=document.getElementById("pathOut"); o.innerHTML="";
+  PATH.forEach(function(g){
+    var d=document.createElement("div"); d.className="stage"+(g.locked?" locked":"");
+    var done=g.steps.filter(function(s){return DB.steps[s.id];}).length;
+    var h='<div class="sh"><b>'+g.s+'</b><span>'+g.sub+' · '+done+'/'+g.steps.length+' done</span></div>';
+    g.steps.forEach(function(s){
+      var dn=!!DB.steps[s.id];
+      var tg=s.tag==="paid"?'<span class="tag paid">PAID</span>':s.tag==="adm"?'<span class="tag adm">ADMIN</span>':'<span class="tag free">FREE</span>';
+      h+='<div class="stp'+(dn?" done":"")+'"><button class="chk" data-s="'+s.id+'" aria-pressed="'+dn+'">'+(dn?"✓":"")+'</button>'+
+        '<div class="bd"><div class="n">STEP '+s.id.toUpperCase()+'</div>'+
+        '<div class="t">'+s.t+tg+'</div>'+
+        '<div class="src">'+s.src+'</div>'+
+        '<div class="do">'+s.do+'</div>'+
+        '<div class="dw">'+s.dw+'</div></div></div>';
+    });
+    d.innerHTML=h; o.appendChild(d);
+  });
+}
+
+document.getElementById("trackRows").addEventListener("click",function(e){
+  var b=e.target.closest("button"); if(!b)return;
+  var d=Object.assign(blankDay(),getDay(cur)), k=b.dataset.t;
+  d[k]=Math.max(0,Math.min(12,(d[k]||0)+(b.dataset.a==="+"?0.25:-0.25)));
+  DB.logs[cur]=d;
+  document.getElementById("v-"+k).textContent=d[k].toFixed(2).replace(/\.00$/,"");
+  renderWeek(); save();
+});
+document.getElementById("pathOut").addEventListener("click",function(e){
+  var b=e.target.closest(".chk"); if(!b)return;
+  DB.steps[b.dataset.s]=!DB.steps[b.dataset.s]; save(); renderPath();
+  document.getElementById("sSteps").textContent=Object.keys(DB.steps).filter(function(k){return DB.steps[k];}).length+"/"+allSteps();
+});
+document.getElementById("saveDay").addEventListener("click",function(){
+  var d=Object.assign(blankDay(),getDay(cur));
+  d.shipped=document.getElementById("shipped").value.trim();
+  d.stuck=document.getElementById("stuck").value.trim();
+  d.tomorrow=document.getElementById("tomorrow").value.trim();
+  DB.logs[cur]=d; save(); render();
+  var m=document.getElementById("savedMsg"); m.classList.remove("hide");
+  setTimeout(function(){m.classList.add("hide");},1800);
+});
+function buildCheckin(){
+  var wt=weekTotal(cur), days=weekDays(cur);
+  var wk=Math.max(1,Math.ceil(Math.max(1,Math.floor((parseISO(todayISO())-parseISO(DB.start))/86400000)+1)/7));
+  var per=TRACKS.map(function(t){
+    var h=days.reduce(function(s,k){return s+(getDay(k)[t.id]||0);},0);
+    return h>0?t.name+" "+h.toFixed(2).replace(/\.00$/,"")+"h":null;}).filter(Boolean).join(" · ");
+  var ship=days.map(function(k){var s=getDay(k).shipped;return s?"  - "+s:null;}).filter(Boolean).join("\n")||"  - nothing";
+  var st=days.map(function(k){var s=getDay(k).stuck;return s?"  - "+s:null;}).filter(Boolean).join("\n")||"  - nothing recorded";
+  var lg=days.filter(function(k){return dayTotal(getDay(k))>0;}).length;
+  var sd=Object.keys(DB.steps).filter(function(k){return DB.steps[k];}).length;
+  return "Week "+wk+"\nHours: "+wt.toFixed(2).replace(/\.00$/,"")+" of 16 target (floor 12) — "+lg+"/7 days logged\n"+
+   "Split: "+(per||"none")+"\nSteps complete: "+sd+"/"+allSteps()+"\nShipped:\n"+ship+"\nStuck on:\n"+st+"\n"+
+   "Skipped and why: "+(document.getElementById("skipped").value.trim()||"not stated")+"\n"+
+   "Next week's one commitment: "+(document.getElementById("commitment").value.trim()||"not set");
+}
+document.getElementById("genBtn").addEventListener("click",function(){
+  DB.commit=document.getElementById("commitment").value; DB.skipped=document.getElementById("skipped").value; save();
+  document.getElementById("checkinOut").textContent=buildCheckin();
+});
+function cp(id,btn){var t=document.getElementById(id).textContent;
+  navigator.clipboard&&navigator.clipboard.writeText(t);
+  var o=btn.textContent; btn.textContent="Copied"; setTimeout(function(){btn.textContent=o;},1500);}
+document.getElementById("copyBtn").addEventListener("click",function(){cp("checkinOut",this);});
+document.getElementById("copyExpBtn").addEventListener("click",function(){cp("expOut",this);});
+document.getElementById("expBtn").addEventListener("click",function(){
+  var keys=Object.keys(DB.logs).sort(), lines=["DIRECTION LOG — started "+DB.start,""];
+  keys.forEach(function(k){
+    var d=DB.logs[k],t=dayTotal(d); if(t<=0&&!d.shipped)return;
+    lines.push(k+"  "+t.toFixed(2).replace(/\.00$/,"")+"h  "+TRACKS.map(function(x){return d[x.id]?x.id+":"+d[x.id]:null;}).filter(Boolean).join(" "));
+    if(d.shipped)lines.push("   shipped: "+d.shipped);
+    if(d.stuck)lines.push("   stuck:   "+d.stuck);
+  });
+  var tot=keys.reduce(function(s,k){return s+dayTotal(DB.logs[k]);},0);
+  var sd=Object.keys(DB.steps).filter(function(k){return DB.steps[k];});
+  lines.push("","TOTAL "+tot.toFixed(1)+"h across "+keys.length+" days");
+  lines.push("STEPS DONE ("+sd.length+"/"+allSteps()+"): "+(sd.join(", ")||"none"));
+  lines.push("","--- BACKUP (paste into Restore) ---",JSON.stringify(DB));
+  document.getElementById("expOut").textContent=lines.join("\n");
+});
+document.getElementById("impBtn").addEventListener("click",function(){
+  var raw=document.getElementById("impBox").value.trim(), i=raw.indexOf("{");
+  if(i>-1)raw=raw.slice(i);
+  try{ var p=JSON.parse(raw); if(!p.logs)throw 0;
+    DB=Object.assign({start:"2026-09-14",logs:{},steps:{},commit:"",skipped:""},p);
+    save(); render(); renderPath();
+    var m=document.getElementById("impMsg"); m.classList.remove("hide"); setTimeout(function(){m.classList.add("hide");},2000);
+  }catch(e){ alert("Couldn't read that backup. Paste the JSON block from an export."); }
+});
+var tabs=document.querySelectorAll("nav.tabs button");
+tabs.forEach(function(b){
+  b.addEventListener("click",function(){
+    tabs.forEach(function(o){o.setAttribute("aria-selected","false");});
+    b.setAttribute("aria-selected","true");
+    ["today","path","week","plan","data"].forEach(function(t){
+      document.getElementById("tab-"+t).classList.toggle("hide",t!==b.dataset.tab);});
+    window.scrollTo(0,0);
+  });
+});
+var ph=document.getElementById("phases");
+PHASES.forEach(function(p){
+  var d=document.createElement("div"); d.className="ph"+(p.live?" live":"");
+  d.innerHTML='<div class="w">'+p.w+(p.live?" · LIVE":"")+'</div><div class="t">'+p.t+'</div><ul>'+
+   p.li.map(function(x){return "<li>"+x+"</li>";}).join("")+'</ul>';
+  ph.appendChild(d);
+});
+load();
+})();
+</script>
+</body>
+</html>
